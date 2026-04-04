@@ -1,0 +1,23 @@
+Package: MINDS
+Type: Package
+Title: Mixed-Modal Integrative Clustering With Bayesian MINDS
+Version: 0.0.1
+Authors@R: person("Abby", "Zhao", email = "abby@example.com", role = c("aut", "cre"))
+Author: Abby Zhao [aut, cre]
+Maintainer: Abby Zhao <abby@example.com>
+Description: Provides the MINDS algorithm for integrative clustering of
+    mixed binary and continuous outcomes, plus an example simulated dataset.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends: R (>= 4.1.0)
+Imports:
+    BayesLogit,
+    EDISON,
+    LaplacesDemon,
+    MASS,
+    abind,
+    mice,
+    psych
