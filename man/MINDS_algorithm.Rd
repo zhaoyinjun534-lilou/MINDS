@@ -52,7 +52,22 @@ A named list containing membership, cluster center, modality loadings,
 intercepts, membership weights, likelihood trace, and ic.
 }
 \description{
-Runs the Bayesian MINDS model for mixed binary-continuous outcomes.
+Runs the Bayesian MINDS model for mixed binary-continuous outcomes,
+designed for integrative subtyping with multimodal data.
+}
+\details{
+MINDS (Mixed INtegrative Data Subtyping) jointly models binary and continuous
+modalities in a unified Bayesian hierarchical framework. The method performs
+simultaneous latent structure learning and clustering, and uses
+P\'olya-Gamma augmentation for efficient posterior computation.
+
+The function returns subtype membership, latent cluster centers, modality-specific
+loadings/intercepts, a likelihood trace summary, and an information criterion
+(`ic`) derived from the DIC helper.
+}
+\references{
+Zhao Y, Wang Y, Liu Y. An Integrative Approach for Subtyping Mental Disorders
+Using Multimodal Data. (Manuscript/PDF source used for package manual update.)
 }
 \examples{
 data(data_mixed)
