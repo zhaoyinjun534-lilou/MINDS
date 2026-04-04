@@ -2,9 +2,9 @@ Package: MINDS
 Type: Package
 Title: Mixed-Modal Integrative Clustering With Bayesian MINDS
 Version: 0.0.1
-Authors@R: person("Abby", "Zhao", email = "abby@example.com", role = c("aut", "cre"))
-Author: Abby Zhao [aut, cre]
-Maintainer: Abby Zhao <abby@example.com>
+Authors@R: person("Yinjun", "Zhao", email = "yz3503@cumc.columbia.edu", role = c("aut", "cre"))
+Author: Yinjun Zhao [aut, cre]
+Maintainer: Yinjun Zhao <yz3503@cumc.columbia.edu>
 Description: Provides the MINDS algorithm for integrative clustering of
     mixed binary and continuous outcomes, plus an example simulated dataset.
 License: MIT + file LICENSE
