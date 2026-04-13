@@ -603,7 +603,19 @@ MINDS_algorithm <- function(
   )
 
   if (exists("dic.fun", mode = "function", inherits = TRUE)) {
-    dic_fun <- get("dic.fun", mode = "function", inherits = TRUE)
+    dic_fun_ns <- get("dic.fun", mode = "function", inherits = TRUE)
+    llk_fun_ns <- get("llk.fun", mode = "function", inherits = TRUE)
+    par_simu_fun_ns <- get("par.simu.fun", mode = "function", inherits = TRUE)
+
+    # Use a mutable local env because dic.fun/par.simu.fun expect free variables
+    # (M_1, M_2, priors, dimensions, etc.) that are not in the package namespace.
+    dic_env <- new.env(parent = environment(dic_fun_ns))
+    dic_env$llk.fun <- llk_fun_ns
+    dic_env$par.simu.fun <- par_simu_fun_ns
+    dic_env$dic.fun <- dic_fun_ns
+    environment(dic_env$llk.fun) <- dic_env
+    environment(dic_env$par.simu.fun) <- dic_env
+    environment(dic_env$dic.fun) <- dic_env
   } else {
     dic_path_candidates <- c("MINDS_Rpackage/cal_DIC_v7.R", "cal_DIC_v7.R")
     dic_path_exists <- file.exists(dic_path_candidates)
@@ -616,7 +628,6 @@ MINDS_algorithm <- function(
     if (!exists("dic.fun", envir = dic_env, mode = "function", inherits = FALSE)) {
       stop("dic.fun is not defined in cal_DIC_v7.R")
     }
-    dic_fun <- get("dic.fun", envir = dic_env, mode = "function", inherits = FALSE)
   }
 
   # cal_DIC_v7.R calls these functions without namespaces.
@@ -626,7 +637,32 @@ MINDS_algorithm <- function(
   suppressMessages(library(LaplacesDemon))
   suppressMessages(library(abind))
 
-  ic.out <- dic_fun(par.est)
+  assign("y_1", y_1, envir = dic_env)
+  assign("y_2", y_2, envir = dic_env)
+  assign("Nb", Nb, envir = dic_env)
+  assign("Nd1", Nd1, envir = dic_env)
+  assign("Nd2", Nd2, envir = dic_env)
+  assign("Nt", Nt, envir = dic_env)
+  assign("Nc", Nc, envir = dic_env)
+  assign("M_1", M_1, envir = dic_env)
+  assign("M_2", M_2, envir = dic_env)
+  assign("sigma2_b", sigma2_b, envir = dic_env)
+  assign("theta", theta, envir = dic_env)
+  assign("sigma2_a_1", sigma2_a_1, envir = dic_env)
+  assign("sigma2_a_2", sigma2_a_2, envir = dic_env)
+  assign("sigma2_v", sigma2_v, envir = dic_env)
+  assign("mu_v", mu_v, envir = dic_env)
+  assign("mu_x", mu_x, envir = dic_env)
+  assign("sigma2_x", sigma2_x, envir = dic_env)
+  assign("sigma2_u", sigma2_u, envir = dic_env)
+  assign("mu_u", mu_u, envir = dic_env)
+  assign("IG_b.shape", IG_b.shape, envir = dic_env)
+  assign("IG_b.scale", IG_b.scale, envir = dic_env)
+  assign("p.theta.prior", p.theta.prior, envir = dic_env)
+  assign("IG_y_2.shape", IG_y_2.shape, envir = dic_env)
+  assign("IG_y_2.scale", IG_y_2.scale, envir = dic_env)
+
+  ic.out <- dic_env$dic.fun(par.est)
   if (!is.list(ic.out) || is.null(ic.out$ic)) {
     stop("dic.fun(par.est) must return a list containing element 'ic'.")
   }
