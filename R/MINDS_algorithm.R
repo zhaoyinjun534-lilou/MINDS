@@ -23,8 +23,8 @@ enforce_identifiability <- function(x.est, V.est, U.est, a_1.est, a_2.est,
 
   x.shift <- apply(x.est, 2, mean)
   x.est <- sweep(x.est, 2, x.shift, FUN = "-")
-  a_1.est <- a_1.est - as.numeric(x.shift %*% V.est)
-  a_2.est <- a_2.est - as.numeric(x.shift %*% U.est)
+  a_1.est <- a_1.est + as.numeric(x.shift %*% V.est)
+  a_2.est <- a_2.est + as.numeric(x.shift %*% U.est)
 
   list(
     x.est = x.est,
@@ -127,7 +127,8 @@ MINDS_algorithm <- function(
     use_true_Z_init = FALSE,
     fix_x = FALSE,
     fix_Z = FALSE,
-    fix_others_at_true = FALSE) {
+    fix_others_at_true = FALSE,
+    n.rep = 20) {
   Nd1 <- ncol(y_1)
   Nd2 <- ncol(y_2)
   Nb <- nrow(y_1)
@@ -144,10 +145,10 @@ MINDS_algorithm <- function(
   y_1_mean <- apply(y_1, 2, function(a) mean(a, na.rm = TRUE))
   odds.fun <- function(a) log(a) / log(1 - a)
   y_1_mean <- pmin(pmax(y_1_mean, 1e-6), 1 - 1e-6)
-  a_1.ini <- odds.fun(y_1_mean[1]) - odds.fun(y_1_mean)
+  a_1.ini <- odds.fun(y_1_mean) - odds.fun(y_1_mean[1])
 
   y_2_mean <- apply(y_2, 2, function(a) mean(a, na.rm = TRUE))
-  a_2.ini <- y_2_mean[1] - y_2_mean
+  a_2.ini <- y_2_mean - y_2_mean[1]
 
   set.seed(init_seed)
   V.ini <- t(replicate(Nt, runif(Nd1, 0, 1)))
@@ -319,19 +320,19 @@ MINDS_algorithm <- function(
     i.iter <- i.iter + 1
 
     temp1 <- (t(Z) %*% x + b) %*% V
-    temp <- t(apply(temp1, 1, function(ti) ti - a_1))
+    temp <- t(apply(temp1, 1, function(ti) ti + a_1))
     w <- apply(temp, c(1, 2), function(s) BayesLogit::rpg(num = 1, h = 1, z = s))
 
     if (!fix_others_at_true) {
       V_a <- 1 / (apply(w * M_1, 2, sum) + 1 / sigma2_a_1)
       temp <- (t(Z) %*% x + b) %*% V
-      r <- temp - (y_1 - 1 / 2) / w
+      r <-  (y_1 - 1 / 2) / w - temp
       Mu_a <- apply(w * M_1 * r, 2, function(a) sum(a, na.rm = TRUE)) * V_a
       a_1 <- sapply(seq_len(Nd1), function(i) rnorm(1, Mu_a[i], sqrt(V_a[i])))
 
       V_a <- 1 / (apply(M_2 * rep(1 / sigma2_y_2, each = nrow(M_2)), 2, sum) + 1 / sigma2_a_2)
       temp <- (t(Z) %*% x + b) %*% U
-      r <- temp - y_2
+      r <- y_2 - temp
       Mu_a <- apply(r * M_2, 2, function(a) sum(a, na.rm = TRUE)) / sigma2_y_2 * V_a
       a_2 <- sapply(seq_len(Nd2), function(i) rnorm(1, Mu_a[i], sqrt(V_a[i])))
     }
@@ -351,7 +352,7 @@ MINDS_algorithm <- function(
         b.sub[, ti] <- 0
 
         temp1 <- (t(Z) %*% x.sub + b.sub) %*% V
-        temp2 <- t(apply(temp1, 1, function(tt) tt - a_1))
+        temp2 <- t(apply(temp1, 1, function(tt) tt + a_1))
         phi <- (y_1 - 1 / 2) / w - temp2
 
         temp3 <- apply(w * M_1, 2, function(s) s * temp_A)
@@ -370,7 +371,7 @@ MINDS_algorithm <- function(
         B_ti <- diag(sigma2_x, Nc)
 
         temp <- (t(Z) %*% x.sub + b) %*% V
-        temp1 <- t(apply(temp, 1, function(tt) tt - a_1))
+        temp1 <- t(apply(temp, 1, function(tt) tt + a_1))
         phi_1 <- (y_1 - 1 / 2) / w - temp1
         phi_1 <- ifelse(is.na(phi_1), 0, phi_1)
 
@@ -394,7 +395,7 @@ MINDS_algorithm <- function(
         mu_sum_1 <- Reduce("+", lapply(seq_len(ncol(dt)), function(i) aa[[i]]$mu_temp))
 
         temp <- (t(Z) %*% x.sub + b) %*% U
-        temp1 <- t(apply(temp, 1, function(tt) tt - a_2))
+        temp1 <- t(apply(temp, 1, function(tt) tt + a_2))
         Phi_1 <- y_2 - temp1
         Phi_1 <- ifelse(is.na(Phi_1), 0, Phi_1)
 
@@ -428,11 +429,11 @@ MINDS_algorithm <- function(
         b.sub[, ti] <- 0
 
         temp <- (t(Z) %*% x + b.sub) %*% V
-        temp1 <- t(apply(temp, 1, function(tt) tt - a_1))
+        temp1 <- t(apply(temp, 1, function(tt) tt + a_1))
         C_ti <- (y_1 - 1 / 2) / w - temp1
 
         temp <- (t(Z) %*% x + b.sub) %*% U
-        temp1 <- t(apply(temp, 1, function(tt) tt - a_2))
+        temp1 <- t(apply(temp, 1, function(tt) tt + a_2))
         D_ti <- y_2 - temp1
 
         V_b_ti_diag <- 1 / (apply(w * M_1, 1, function(w_i) sum(w_i * V[ti, ]^2)) +
@@ -464,7 +465,7 @@ MINDS_algorithm <- function(
         b.sub[, ti] <- 0
 
         temp1 <- (t(Z) %*% x.sub + b.sub) %*% U
-        temp2 <- t(apply(temp1, 1, function(tt) tt - a_2))
+        temp2 <- t(apply(temp1, 1, function(tt) tt + a_2))
         phi <- y_2 - temp2
 
         temp3 <- apply(phi * M_2, 2, function(s) sum(s * temp_A, na.rm = TRUE))
@@ -491,12 +492,12 @@ MINDS_algorithm <- function(
       alpha <- NULL
       for (k in seq_len(Nc)) {
         temp1 <- t(apply(b, 1, function(b_i) x[k, ] + b_i)) %*% V
-        temp2 <- t(apply(temp1, 1, function(tt) tt - a_1)) - (y_1 - 1 / 2) / w
+        temp2 <- t(apply(temp1, 1, function(tt) tt + a_1)) - (y_1 - 1 / 2) / w
         temp2 <- ifelse(is.na(temp2), 0, temp2)
         p1_k <- exp(-w * M_1 / 2 * temp2^2)
 
         temp1 <- t(apply(b, 1, function(b_i) x[k, ] + b_i)) %*% U
-        temp2 <- t(apply(temp1, 1, function(tt) tt - a_2))
+        temp2 <- t(apply(temp1, 1, function(tt) tt + a_2))
 
         sigma2_y_2_matrix <- matrix(rep(sigma2_y_2, Nb), nrow = Nb, byrow = TRUE)
         aa <- temp2 - y_2
@@ -516,7 +517,7 @@ MINDS_algorithm <- function(
       sigma2_b <- apply(b, 2, function(b_ti) EDISON::rinvgamma(1, Nb / 2 + IG_b.shape, sum(b_ti^2) / 2 + IG_b.scale))
 
       temp <- (t(Z) %*% x + b) %*% U
-      temp1 <- t(apply(temp, 1, function(tt) tt - a_2))
+      temp1 <- t(apply(temp, 1, function(tt) tt + a_2))
       C <- y_2 - temp1
       aa <- apply(C^2 * M_2, 2, function(a) sum(a, na.rm = TRUE)) / 2
       sigma2_y_2 <- unlist(lapply(seq_len(Nd2), function(j) {
@@ -525,13 +526,13 @@ MINDS_algorithm <- function(
     }
 
     temp <- (t(Z) %*% x + b) %*% V
-    temp1 <- t(apply(temp, 1, function(tt) tt - a_1))
+    temp1 <- t(apply(temp, 1, function(tt) tt + a_1))
     p <- exp(temp1) / (1 + exp(temp1))
     llk_binary <- sum(apply(M_1 * y_1 * log(p) + log(1 - p) * M_1 * (1 - y_1), 1,
                             function(a) sum(a, na.rm = TRUE)), na.rm = TRUE)
 
     temp <- (t(Z) %*% x + b) %*% U
-    temp1 <- t(apply(temp, 1, function(tt) tt - a_2))
+    temp1 <- t(apply(temp, 1, function(tt) tt + a_2))
     logd <- sapply(seq_len(Nd2), function(j) {
       M_2[, j] * dnorm(y_2[, j], mean = temp1[, j], sd = sqrt(sigma2_y_2[j]), log = TRUE)
     })
@@ -602,13 +603,14 @@ MINDS_algorithm <- function(
     "sigma2_b" = sigma2_b
   )
 
-  if (exists("dic.fun", mode = "function", inherits = TRUE)) {
+  if (exists("dic.fun", mode = "function", inherits = TRUE) &&
+      exists("llk.fun", mode = "function", inherits = TRUE) &&
+      exists("par.simu.fun", mode = "function", inherits = TRUE)) {
     dic_fun_ns <- get("dic.fun", mode = "function", inherits = TRUE)
     llk_fun_ns <- get("llk.fun", mode = "function", inherits = TRUE)
     par_simu_fun_ns <- get("par.simu.fun", mode = "function", inherits = TRUE)
 
-    # Use a mutable local env because dic.fun/par.simu.fun expect free variables
-    # (M_1, M_2, priors, dimensions, etc.) that are not in the package namespace.
+    # cal_DIC helpers rely on free variables, so evaluate in a local mutable env.
     dic_env <- new.env(parent = environment(dic_fun_ns))
     dic_env$llk.fun <- llk_fun_ns
     dic_env$par.simu.fun <- par_simu_fun_ns
@@ -661,6 +663,7 @@ MINDS_algorithm <- function(
   assign("p.theta.prior", p.theta.prior, envir = dic_env)
   assign("IG_y_2.shape", IG_y_2.shape, envir = dic_env)
   assign("IG_y_2.scale", IG_y_2.scale, envir = dic_env)
+  assign("n.rep", n.rep, envir = dic_env)
 
   ic.out <- dic_env$dic.fun(par.est)
   if (!is.list(ic.out) || is.null(ic.out$ic)) {

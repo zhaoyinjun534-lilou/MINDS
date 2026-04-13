@@ -12,7 +12,6 @@ Nt <- 3
 
 #true values of the parameters
 sigma2_b.true <- rep(sigma2_b.true.element, Nt) #var of true b
-theta.true <- rep(1 / Nc, Nc)
 
 if(Nc==4){
   theta.true <- c(0.3, 0.3, 0.2, 0.2) #Nc
@@ -28,8 +27,8 @@ par.fun <- function(){
   set.seed(4)
   
   # Item-specific fixed effects (intercepts)
-  a_1.true <- rnorm(Nd1, mean = 0, sd = 0.5)
-  a_2.true <- rnorm(Nd2, mean = 0, sd = 0.5)
+  a_1.true <- rnorm(Nd1, mean = 0, sd = 0.5)*(-1)
+  a_2.true <- rnorm(Nd2, mean = 0, sd = 0.5)*(-1)
 
   # Cluster centers in latent space
   # x.true <- matrix(rnorm(Nc * Nt, mean = 0, sd = 0.2), nrow = Nc, ncol = Nt)
@@ -78,8 +77,8 @@ par.fun <- function(){
   # 2. Location constraint: sum_k omega_k X_k = 0
   x.shift <- apply(x.true, 2, mean)
   x.true  <- sweep(x.true, 2, x.shift, FUN = "-")
-  a_1.true <- a_1.true - as.numeric(x.shift %*% V.true)
-  a_2.true <- a_2.true - as.numeric(x.shift %*% U.true)
+  a_1.true <- a_1.true + as.numeric(x.shift %*% V.true)
+  a_2.true <- a_2.true + as.numeric(x.shift %*% U.true)
   
   
   
@@ -119,13 +118,13 @@ Z.cat.true <- apply(Z.true, 2, function (a) which(a==1))
 y.fun <- function(seed.no){
   set.seed(seed.no)
   temp <- (t(Z.true) %*% x.true + b.true) %*% V.true; #(Z^T*x+b)*V, Nb*Nd1
-  temp1 <- t(apply(temp, 1, function (t) {t - a_1.true}));#(Z^T*x+b)V-a
+  temp1 <- t(apply(temp, 1, function (t) {t + a_1.true}));#(Z^T*x+b)V-a
   p <- exp(temp1)/(1 + exp(temp1))
   
   y_1 <- apply(p, c(1,2), function(a) (rbinom(1, 1, a)))
   
   temp <- (t(Z.true) %*% x.true + b.true) %*% U.true; #(Z^T*x+b)*U, Nb*Nd2
-  temp1 <- t(apply(temp, 1, function (t) {t - a_2.true}));#(Z^T*x+b)U-a
+  temp1 <- t(apply(temp, 1, function (t) {t + a_2.true}));#(Z^T*x+b)U-a
   
   y_2 <- t(sapply(seq(Nb), 
                   function(i) MASS::mvrnorm(1, temp1[i,], diag(sigma2_y_2.true))))
