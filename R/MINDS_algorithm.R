@@ -71,6 +71,8 @@ enforce_identifiability <- function(x.est, V.est, U.est, a_1.est, a_2.est,
 #' @param fix_others_at_true Logical; if `TRUE`, keep all non-`x` parameters
 #'   fixed at their true values (from `*.true` objects in the calling
 #'   environment) and update only `x`.
+#' @param apply_identifiability Logical; if `TRUE`, apply
+#'   `enforce_identifiability` to posterior estimates before returning.
 #' @param n.rep Integer number of posterior draws used by `dic.fun`.
 #'
 #' @return A named list with elements:
@@ -128,6 +130,7 @@ MINDS_algorithm <- function(
     fix_x = FALSE,
     fix_Z = FALSE,
     fix_others_at_true = FALSE,
+    apply_identifiability = TRUE,
     n.rep = 20) {
   Nd1 <- ncol(y_1)
   Nd2 <- ncol(y_2)
@@ -145,10 +148,10 @@ MINDS_algorithm <- function(
   y_1_mean <- apply(y_1, 2, function(a) mean(a, na.rm = TRUE))
   odds.fun <- function(a) log(a) / log(1 - a)
   y_1_mean <- pmin(pmax(y_1_mean, 1e-6), 1 - 1e-6)
-  a_1.ini <- odds.fun(y_1_mean) - odds.fun(y_1_mean[1])
+  a_1.ini <- odds.fun(y_1_mean) - odds.fun(y_1_mean[1])  
 
   y_2_mean <- apply(y_2, 2, function(a) mean(a, na.rm = TRUE))
-  a_2.ini <- y_2_mean - y_2_mean[1]
+  a_2.ini <- y_2_mean - y_2_mean[1] 
 
   set.seed(init_seed)
   V.ini <- t(replicate(Nt, runif(Nd1, 0, 1)))
@@ -205,6 +208,8 @@ MINDS_algorithm <- function(
     sdev = best_sdev,
     thin = 1, pp.cutoff = 0.5
   )
+  # y.cor <- cor(y.complete)
+  
   Z.cat.est <- final_fit$clusters
 
   # f5 <- psych::fa(y.cor, nfactors = min(5, ncol(y.cor)))
@@ -567,23 +572,25 @@ MINDS_algorithm <- function(
   theta.est <- round(apply(theta.all[post.idx, , drop = FALSE], 2, median), 3)
   Z.cat.est <- apply(alpha.est, 2, which.max)
   
-  iden.par <- enforce_identifiability(
-    x.est = x.est,
-    V.est = V.est,
-    U.est = U.est,
-    a_1.est = a_1.est,
-    a_2.est = a_2.est,
-    theta.est = theta.est,
-    Nd1 = Nd1,
-    Nd2 = Nd2,
-    Nt = Nt
-  )
+  if (apply_identifiability) {
+    iden.par <- enforce_identifiability(
+      x.est = x.est,
+      V.est = V.est,
+      U.est = U.est,
+      a_1.est = a_1.est,
+      a_2.est = a_2.est,
+      theta.est = theta.est,
+      Nd1 = Nd1,
+      Nd2 = Nd2,
+      Nt = Nt
+    )
 
-  x.est <- iden.par$x.est
-  V.est <- iden.par$V.est
-  U.est <- iden.par$U.est
-  a_1.est <- iden.par$a_1.est
-  a_2.est <- iden.par$a_2.est
+    x.est <- iden.par$x.est
+    V.est <- iden.par$V.est
+    U.est <- iden.par$U.est
+    a_1.est <- iden.par$a_1.est
+    a_2.est <- iden.par$a_2.est
+  }
 
   llk.trace <- as.numeric(llk.all[1, ])
   if (plot_trace) {
@@ -632,12 +639,12 @@ MINDS_algorithm <- function(
     }
   }
 
-  # cal_DIC_v7.R calls these functions without namespaces.
-  suppressMessages(library(BayesLogit))
-  suppressMessages(library(MASS))
-  suppressMessages(library(EDISON))
-  suppressMessages(library(LaplacesDemon))
-  suppressMessages(library(abind))
+  # cal_DIC_v7.R references these symbols without namespaces.
+  assign("rpg", BayesLogit::rpg, envir = dic_env)
+  assign("mvrnorm", MASS::mvrnorm, envir = dic_env)
+  assign("rinvgamma", EDISON::rinvgamma, envir = dic_env)
+  assign("rdirichlet", LaplacesDemon::rdirichlet, envir = dic_env)
+  assign("abind", abind::abind, envir = dic_env)
 
   assign("y_1", y_1, envir = dic_env)
   assign("y_2", y_2, envir = dic_env)

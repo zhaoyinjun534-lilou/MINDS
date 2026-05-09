@@ -27,7 +27,9 @@ MINDS_algorithm(
   use_true_Z_init = FALSE,
   fix_x = FALSE,
   fix_Z = FALSE,
-  fix_others_at_true = FALSE
+  fix_others_at_true = FALSE,
+  apply_identifiability = TRUE,
+  n.rep = 20
 )
 }
 \arguments{
@@ -56,6 +58,8 @@ MINDS_algorithm(
   \item{fix_x}{Logical; if \code{TRUE}, keep cluster centers \code{x} fixed to initialized values.}
   \item{fix_Z}{Logical; if \code{TRUE}, keep cluster assignments \code{Z} fixed to initialized values.}
   \item{fix_others_at_true}{Logical; if \code{TRUE}, keep all non-\code{x} parameters fixed at available true values and update only \code{x}.}
+  \item{apply_identifiability}{Logical; if \code{TRUE}, apply \code{enforce_identifiability} to posterior estimates before returning.}
+  \item{n.rep}{Integer number of posterior draws used by \code{dic.fun}.}
 }
 \value{
 A named list with elements:
@@ -90,7 +94,7 @@ loadings/intercepts, a likelihood trace summary, and an information criterion
 Zhao Y, Wang Y, Liu Y. An Integrative Approach for Subtyping Mental Disorders
 Using Multimodal Data. (Manuscript/PDF source used for package manual update.)
 }
-\examples{
+\examples{\dontrun{
 data(data_mixed)
 out <- MINDS_algorithm(
   y_1 = data_mixed$y_1,
@@ -101,4 +105,5 @@ out <- MINDS_algorithm(
   plot_trace = FALSE
 )
 names(out)
+}
 }
