@@ -1,3 +1,7 @@
 ^data-raw$
 ^\.DS_Store$
 ^\.git$
+^.*\.Rhistory$
+^.*\.Rproj\.user$
+^README\.Rmd$
+^\.github$

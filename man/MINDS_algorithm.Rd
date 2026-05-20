@@ -7,7 +7,7 @@ MINDS_algorithm(
   y_2,
   Nc,
   Nt,
-  iter.max = 2000,
+  iter.max = 1000,
   mu_x = 0,
   sigma2_x = 1,
   IG_b.shape = 11,
@@ -21,14 +21,9 @@ MINDS_algorithm(
   mu_v = 0,
   sigma2_u = 10,
   mu_u = 0,
+  true.values = NULL,
   init_seed = 123,
   plot_trace = TRUE,
-  use_true_init = FALSE,
-  use_true_Z_init = FALSE,
-  fix_x = FALSE,
-  fix_Z = FALSE,
-  fix_others_at_true = FALSE,
-  apply_identifiability = TRUE,
   n.rep = 20
 )
 }
@@ -37,44 +32,29 @@ MINDS_algorithm(
   \item{y_2}{Continuous outcome matrix with subjects in rows and items in columns.}
   \item{Nc}{Integer number of latent clusters.}
   \item{Nt}{Integer number of latent constructs.}
-  \item{iter.max}{Integer number of MCMC iterations.}
-  \item{mu_x}{Prior mean for cluster centers \code{x}.}
-  \item{sigma2_x}{Prior variance for cluster centers \code{x}.}
-  \item{IG_b.shape}{Inverse-gamma shape for random-effect variance \code{sigma2_b}.}
-  \item{IG_b.scale}{Inverse-gamma scale for random-effect variance \code{sigma2_b}.}
-  \item{p.theta.prior}{Dirichlet prior parameters for cluster weights.}
-  \item{IG_y_2.shape}{Inverse-gamma shape for \code{sigma2_y_2}.}
-  \item{IG_y_2.scale}{Inverse-gamma scale for \code{sigma2_y_2}.}
-  \item{sigma2_a_1}{Prior variance for binary intercepts.}
-  \item{sigma2_a_2}{Prior variance for continuous intercepts.}
-  \item{sigma2_v}{Prior variance for binary loadings.}
-  \item{mu_v}{Prior mean for binary loadings.}
-  \item{sigma2_u}{Prior variance for continuous loadings.}
-  \item{mu_u}{Prior mean for continuous loadings.}
-  \item{init_seed}{Seed used for initialization and imputation.}
-  \item{plot_trace}{Logical; if \code{TRUE}, draw the likelihood trace.}
-  \item{use_true_init}{Logical; if \code{TRUE}, initialize parameters from available \code{*.true} objects.}
-  \item{use_true_Z_init}{Logical; if \code{TRUE}, initialize \code{Z} from \code{Z.true} while leaving other initials unchanged.}
-  \item{fix_x}{Logical; if \code{TRUE}, keep cluster centers \code{x} fixed to initialized values.}
-  \item{fix_Z}{Logical; if \code{TRUE}, keep cluster assignments \code{Z} fixed to initialized values.}
-  \item{fix_others_at_true}{Logical; if \code{TRUE}, keep all non-\code{x} parameters fixed at available true values and update only \code{x}.}
-  \item{apply_identifiability}{Logical; if \code{TRUE}, apply \code{enforce_identifiability} to posterior estimates before returning.}
-  \item{n.rep}{Integer number of posterior draws used by \code{dic.fun}.}
+  \item{iter.max}{Integer number of MCMC iterations. Default \code{1000}.}
+  \item{mu_x}{Prior mean for cluster centers \code{x}. Default \code{0}.}
+  \item{sigma2_x}{Prior variance for cluster centers \code{x}. Default \code{1}.}
+  \item{IG_b.shape}{Inverse-gamma shape for random-effect variance \code{sigma2_b}. Default \code{11}.}
+  \item{IG_b.scale}{Inverse-gamma scale for random-effect variance \code{sigma2_b}. Default \code{1}.}
+  \item{p.theta.prior}{Dirichlet prior parameters for cluster weights. Default \code{rep(1, Nc)}.}
+  \item{IG_y_2.shape}{Inverse-gamma shape for \code{sigma2_y_2}. Default \code{2}.}
+  \item{IG_y_2.scale}{Inverse-gamma scale for \code{sigma2_y_2}. Default \code{1}.}
+  \item{sigma2_a_1}{Prior variance for binary intercepts. Default \code{10}.}
+  \item{sigma2_a_2}{Prior variance for continuous intercepts. Default \code{10}.}
+  \item{sigma2_v}{Prior variance for binary loadings. Default \code{10}.}
+  \item{mu_v}{Prior mean for binary loadings. Default \code{0}.}
+  \item{sigma2_u}{Prior variance for continuous loadings. Default \code{10}.}
+  \item{mu_u}{Prior mean for continuous loadings. Default \code{0}.}
+  \item{true.values}{Optional list of true parameter values for initialization. 
+    Expected list components are \code{x.true}, \code{V.true}, \code{U.true}, 
+    \code{a_1.true}, and \code{a_2.true}. Default \code{NULL}.}
+  \item{init_seed}{Seed used for initialization and imputation. Default \code{123}.}
+  \item{plot_trace}{Logical; if \code{TRUE}, draw the likelihood trace. Default \code{TRUE}.}
+  \item{n.rep}{Integer number of posterior draws used by DIC computation. Default \code{20}.}
 }
 \value{
-A named list with elements:
-\itemize{
-\item \code{membership}: Estimated cluster assignment for each subject.
-\item \code{cluster center}: Estimated cluster centers.
-\item \code{x trace}: MCMC trace array for \code{x} across iterations.
-\item \code{loading to binary modality}: Estimated binary loadings.
-\item \code{loading to continuous modality}: Estimated continuous loadings.
-\item \code{binary modality intercept}: Estimated binary intercepts.
-\item \code{continuous modality intercept}: Estimated continuous intercepts.
-\item \code{membership weight}: Estimated cluster weights.
-\item \code{likelihood trace plot}: Numeric likelihood trace.
-\item \code{ic}: Information criterion from DIC helper.
-}
+A named list with MCMC posterior samples and summary statistics.
 }
 \description{
 Runs the Bayesian MINDS model using binary outcomes \code{y_1} and continuous
@@ -82,17 +62,8 @@ outcomes \code{y_2}, with user-specified prior hyperparameters.
 }
 \details{
 MINDS (Mixed INtegrative Data Subtyping) jointly models binary and continuous
-modalities in a unified Bayesian hierarchical framework. The method performs
-simultaneous latent structure learning and clustering, and uses
-P\'olya-Gamma augmentation for efficient posterior computation.
-
-The function returns subtype membership, latent cluster centers, modality-specific
-loadings/intercepts, a likelihood trace summary, and an information criterion
-(`ic`) derived from the DIC helper.
-}
-\references{
-Zhao Y, Wang Y, Liu Y. An Integrative Approach for Subtyping Mental Disorders
-Using Multimodal Data. (Manuscript/PDF source used for package manual update.)
+modalities in a unified Bayesian hierarchical framework using Pólya-Gamma 
+augmentation for efficient posterior computation.
 }
 \examples{\dontrun{
 data(data_mixed)

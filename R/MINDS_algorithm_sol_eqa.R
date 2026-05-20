@@ -1,40 +1,3 @@
-enforce_identifiability <- function(x.est, V.est, U.est, a_1.est, a_2.est,
-                                    theta.est, Nd1, Nd2, Nt) {
-  L.raw <- rbind(t(V.est), t(U.est))
-  qr.L <- qr(L.raw)
-  Q <- qr.Q(qr.L)[, seq_len(Nt), drop = FALSE]
-  R <- qr.R(qr.L)[seq_len(Nt), seq_len(Nt), drop = FALSE]
-
-  sign.d <- sign(diag(R))
-  sign.d[sign.d == 0] <- 1
-  Q <- sweep(Q, 2, sign.d, "*")
-  R <- diag(sign.d) %*% R
-
-  x.est <- x.est %*% t(R)
-  V.est <- t(Q[seq_len(Nd1), , drop = FALSE])
-  U.est <- t(Q[Nd1 + seq_len(Nd2), , drop = FALSE])
-
-  # Order latent dimensions by weighted L2 norm of x to fix dimension identifiability.
-  x_l2 <- apply(x.est, 2, function(col_j) sqrt(sum(col_j^2)))
-  dim_order <- order(x_l2, decreasing = TRUE)
-  x.est <- x.est[, dim_order, drop = FALSE]
-  V.est <- V.est[dim_order, , drop = FALSE]
-  U.est <- U.est[dim_order, , drop = FALSE]
-
-  x.shift <- apply(x.est, 2, mean)
-  x.est <- sweep(x.est, 2, x.shift, FUN = "-")
-  a_1.est <- a_1.est + as.numeric(x.shift %*% V.est)
-  a_2.est <- a_2.est + as.numeric(x.shift %*% U.est)
-
-  list(
-    x.est = x.est,
-    V.est = V.est,
-    U.est = U.est,
-    a_1.est = a_1.est,
-    a_2.est = a_2.est
-  )
-}
-
 #' Fit MINDS Algorithm For Mixed Binary-Continuous Data
 #'
 #' Runs the Bayesian MINDS model using binary outcomes `y_1` and continuous
@@ -58,58 +21,19 @@ enforce_identifiability <- function(x.est, V.est, U.est, a_1.est, a_2.est,
 #' @param mu_v Prior mean for binary loadings.
 #' @param sigma2_u Prior variance for continuous loadings.
 #' @param mu_u Prior mean for continuous loadings.
+#' @param true.values Optional list of true parameter values used for initialization and equation solving.
+#'   Expected list components are `x`, `V`, `U`, `a_1`, and `a_2`.
 #' @param init_seed Seed used for initialization and imputation.
 #' @param plot_trace Logical; if `TRUE`, draw the likelihood trace.
-#' @param use_true_init Logical; if `TRUE`, initialize parameters from
-#'   `*.true` objects in the calling environment when available.
-#' @param use_true_Z_init Logical; if `TRUE`, initialize `Z` from `Z.true`
-#'   in the calling environment while leaving other initials unchanged.
-#' @param fix_x Logical; if `TRUE`, keep cluster centers `x` fixed to the
-#'   initialized value throughout MCMC.
-#' @param fix_Z Logical; if `TRUE`, keep cluster assignment matrix `Z` fixed
-#'   to its initialized value throughout MCMC.
-#' @param fix_others_at_true Logical; if `TRUE`, keep all non-`x` parameters
-#'   fixed at their true values (from `*.true` objects in the calling
-#'   environment) and update only `x`.
-#' @param apply_identifiability Logical; if `TRUE`, apply
-#'   `enforce_identifiability` to posterior estimates before returning.
-#' @param n.rep Integer number of posterior draws used by `dic.fun`.
-#'
-#' @return A named list with elements:
-#' \itemize{
-#'   \item `membership`: Estimated cluster assignment for each subject.
-#'   \item `cluster center`: Estimated cluster centers.
-#'   \item `loading to binary modality`: Estimated binary loading.
-#'   \item `loading to continuous modality`: Estimated continuous loading.
-#'   \item `binary modality intercept`: Estimated binary intercepts.
-#'   \item `continuous modality intercept`: Estimated continuous intercepts.
-#'   \item `membership weight`: Estimated cluster weights.
-#'   \item `likelihood trace plot`: Numeric likelihood trace across iterations.
-#'   \item `ic`: Information criterion from `dic.fun(par.est)$ic`.
-#' }
-#'
-#' @examples
-#' \dontrun{
-#' source("MINDS_Rpackage/data_generation.R")
-#' source("MINDS_Rpackage/MINDS_algorithm.R")
-#' out <- MINDS_algorithm(
-#'   y_1 = data_mixed$y_1,
-#'   y_2 = data_mixed$y_2,
-#'   Nc = 4,
-#'   Nt = 3,
-#'   iter.max = 50,
-#'   plot_trace = FALSE
-#' )
-#' names(out)
-#' }
-#'
+#' @param n.rep Integer number of posterior draws used by DIC computation. Default `20`.
+#' @importFrom nloptr cobyla
 #' @export
 MINDS_algorithm <- function(
     y_1,
     y_2,
     Nc,
     Nt,
-    iter.max = 2000,
+    iter.max = 1000,
     mu_x = 0,
     sigma2_x = 1,
     IG_b.shape = 11,
@@ -123,14 +47,9 @@ MINDS_algorithm <- function(
     mu_v = 0,
     sigma2_u = 10,
     mu_u = 0,
+    true.values = NULL,
     init_seed = 123,
     plot_trace = TRUE,
-    use_true_init = FALSE,
-    use_true_Z_init = FALSE,
-    fix_x = FALSE,
-    fix_Z = FALSE,
-    fix_others_at_true = FALSE,
-    apply_identifiability = TRUE,
     n.rep = 20) {
   Nd1 <- ncol(y_1)
   Nd2 <- ncol(y_2)
@@ -139,6 +58,17 @@ MINDS_algorithm <- function(
   if (nrow(y_2) != Nb) {
     stop("y_1 and y_2 must have the same number of rows.")
   }
+
+
+
+  if (!is.null(true.values)) {
+    x.true <- true.values$x
+    V.true <- true.values$V
+    U.true <- true.values$U
+    a_1.true <- true.values$a_1
+    a_2.true <- true.values$a_2
+  } 
+
 
   x.ini <- MASS::mvrnorm(Nc, rep(mu_x, Nt), Sigma = diag(rep(sigma2_x, Nt)))
   sigma2_b.ini <- EDISON::rinvgamma(Nt, IG_b.shape, IG_b.scale)
@@ -156,6 +86,8 @@ MINDS_algorithm <- function(
   set.seed(init_seed)
   V.ini <- t(replicate(Nt, runif(Nd1, 0, 1)))
   U.ini <- t(replicate(Nt, runif(Nd2, 0, 1)))
+  
+ 
 
   y <- data.frame(apply(y_1, 2, as.logical), y_2)
   imp <- mice::mice(y, m = 5, maxit = 50, method = "pmm", seed = init_seed, printFlag = FALSE)
@@ -217,72 +149,13 @@ MINDS_algorithm <- function(
   # 
   # cl <- kmeans(my.score, Nc)
   # Z.cat.est <- cl$cluster
-  Z.est <- matrix(0, Nc, Nb)
-  for (i in seq_len(Nb)) {
-    Z.est[Z.cat.est[i], i] <- 1
-  }
+  Z.est <- Zcat_to_Zest(Z.cat.est, Nc, Nb)
   Z.ini <- Z.est
-
+  alpha <- t(Z.ini)
   theta.count <- tabulate(Z.cat.est, nbins = Nc)
   theta.ini <- theta.count / sum(theta.count)
 
-  if (use_true_init) {
-    required_names <- c(
-      "x.true", "V.true", "U.true", "a_1.true", "a_2.true",
-      "Z.true", "b.true", "theta.true", "sigma2_b.true", "sigma2_y_2.true"
-    )
-    has_all_true <- all(vapply(required_names, exists, logical(1), inherits = TRUE))
-    if (!has_all_true) {
-      missing_names <- required_names[!vapply(required_names, exists, logical(1), inherits = TRUE)]
-      stop(
-        "use_true_init=TRUE requires these objects in scope: ",
-        paste(missing_names, collapse = ", ")
-      )
-    }
 
-    x.ini <- get("x.true", inherits = TRUE)
-    V.ini <- get("V.true", inherits = TRUE)
-    U.ini <- get("U.true", inherits = TRUE)
-    a_1.ini <- get("a_1.true", inherits = TRUE)
-    a_2.ini <- get("a_2.true", inherits = TRUE)
-    Z.ini <- get("Z.true", inherits = TRUE)
-    b.ini <- get("b.true", inherits = TRUE)
-    theta.ini <- as.numeric(get("theta.true", inherits = TRUE))
-    sigma2_b.ini <- as.numeric(get("sigma2_b.true", inherits = TRUE))
-    sigma2_y_2.ini <- as.numeric(get("sigma2_y_2.true", inherits = TRUE))
-  }
-
-  if (use_true_Z_init) {
-    if (!exists("Z.true", inherits = TRUE)) {
-      stop("use_true_Z_init=TRUE requires object Z.true in scope.")
-    }
-    Z.ini <- get("Z.true", inherits = TRUE)
-  }
-
-  if (fix_others_at_true) {
-    required_names_fix <- c(
-      "V.true", "U.true", "a_1.true", "a_2.true",
-      "Z.true", "b.true", "theta.true", "sigma2_b.true", "sigma2_y_2.true"
-    )
-    has_all_true_fix <- all(vapply(required_names_fix, exists, logical(1), inherits = TRUE))
-    if (!has_all_true_fix) {
-      missing_names_fix <- required_names_fix[!vapply(required_names_fix, exists, logical(1), inherits = TRUE)]
-      stop(
-        "fix_others_at_true=TRUE requires these objects in scope: ",
-        paste(missing_names_fix, collapse = ", ")
-      )
-    }
-
-    V.ini <- get("V.true", inherits = TRUE)
-    U.ini <- get("U.true", inherits = TRUE)
-    a_1.ini <- get("a_1.true", inherits = TRUE)
-    a_2.ini <- get("a_2.true", inherits = TRUE)
-    Z.ini <- get("Z.true", inherits = TRUE)
-    b.ini <- get("b.true", inherits = TRUE)
-    theta.ini <- as.numeric(get("theta.true", inherits = TRUE))
-    sigma2_b.ini <- as.numeric(get("sigma2_b.true", inherits = TRUE))
-    sigma2_y_2.ini <- as.numeric(get("sigma2_y_2.true", inherits = TRUE))
-  }
 
   x <- x.ini
   Z <- Z.ini
@@ -303,6 +176,7 @@ MINDS_algorithm <- function(
   a_2.all <- NULL
   V.all <- NULL
   U.all <- NULL
+  b.all <- NULL
   sigma2_y_2.all <- NULL
   sigma2_b.all <- NULL
   llk.all <- NULL
@@ -328,7 +202,6 @@ MINDS_algorithm <- function(
     temp <- t(apply(temp1, 1, function(ti) ti + a_1))
     w <- apply(temp, c(1, 2), function(s) BayesLogit::rpg(num = 1, h = 1, z = s))
 
-    if (!fix_others_at_true) {
       V_a <- 1 / (apply(w * M_1, 2, sum) + 1 / sigma2_a_1)
       temp <- (t(Z) %*% x + b) %*% V
       r <-  (y_1 - 1 / 2) / w - temp
@@ -340,9 +213,7 @@ MINDS_algorithm <- function(
       r <- y_2 - temp
       Mu_a <- apply(r * M_2, 2, function(a) sum(a, na.rm = TRUE)) / sigma2_y_2 * V_a
       a_2 <- sapply(seq_len(Nd2), function(i) rnorm(1, Mu_a[i], sqrt(V_a[i])))
-    }
 
-    if (!fix_others_at_true) {
       for (ti in seq_len(Nt)) {
         index_x <- rep(0, Nt)
         index_x[ti] <- 1
@@ -367,9 +238,7 @@ MINDS_algorithm <- function(
         V_ti <- MASS::mvrnorm(1, Mu_V_ti, diag(B_V_ti))
         V[ti, ] <- V_ti
       }
-    }
 
-    if (!fix_x) {
       for (ti in seq_len(Nt)) {
         x.sub <- x
         x.sub[, ti] <- 0
@@ -426,9 +295,7 @@ MINDS_algorithm <- function(
         x_ti <- MASS::mvrnorm(1, Mu_x_ti, V_x_ti)
         x[, ti] <- x_ti
       }
-    }
 
-    if (!fix_others_at_true) {
       for (ti in seq_len(Nt)) {
         b.sub <- b
         b.sub[, ti] <- 0
@@ -453,9 +320,7 @@ MINDS_algorithm <- function(
         b_ti <- sapply(seq_len(Nb), function(bi) rnorm(1, Mu_b_ti[bi], sqrt(V_b_ti_diag[bi])))
         b[, ti] <- b_ti
       }
-    }
 
-    if (!fix_others_at_true) {
       for (ti in seq_len(Nt)) {
         index_x <- rep(0, Nt)
         index_x[ti] <- 1
@@ -480,20 +345,9 @@ MINDS_algorithm <- function(
         U_ti <- MASS::mvrnorm(1, Mu_U_ti, diag(B_U_ti))
         U[ti, ] <- U_ti
       }
-    }
 
-    if (fix_others_at_true) {
-      Z <- Z.ini
-      alpha <- t(Z.ini)
-    } else if (fix_Z) {
-      Z <- Z.ini
-      alpha <- t(Z.ini)
-    } else if (i.iter < iter.max * 0.2) {
-      Z <- Z.ini
-      alpha <- t(Z.ini)
-    }
 
-    if (!fix_Z && i.iter >= iter.max * 0.2) {
+    if (i.iter >= iter.max * 0.2) {
       alpha <- NULL
       for (k in seq_len(Nc)) {
         temp1 <- t(apply(b, 1, function(b_i) x[k, ] + b_i)) %*% V
@@ -517,7 +371,6 @@ MINDS_algorithm <- function(
       Z <- apply(alpha, 1, function(p) rmultinom(1, 1, p))
     }
 
-    if (!fix_others_at_true) {
       theta <- LaplacesDemon::rdirichlet(1, apply(Z, 1, sum) + p.theta.prior)
       sigma2_b <- apply(b, 2, function(b_ti) EDISON::rinvgamma(1, Nb / 2 + IG_b.shape, sum(b_ti^2) / 2 + IG_b.scale))
 
@@ -528,7 +381,6 @@ MINDS_algorithm <- function(
       sigma2_y_2 <- unlist(lapply(seq_len(Nd2), function(j) {
         EDISON::rinvgamma(1, Nb / 2 + IG_y_2.shape, aa[j] + IG_y_2.scale)
       }))
-    }
 
     temp <- (t(Z) %*% x + b) %*% V
     temp1 <- t(apply(temp, 1, function(tt) tt + a_1))
@@ -548,6 +400,7 @@ MINDS_algorithm <- function(
     Z.all <- abind::abind(Z.all, Z, along = 3)
     V.all <- abind::abind(V.all, V, along = 3)
     U.all <- abind::abind(U.all, U, along = 3)
+    b.all <- abind::abind(b.all, b, along = 3)
 
     theta.all <- rbind(theta.all, theta)
     sigma2_y_2.all <- cbind(sigma2_y_2.all, sigma2_y_2)
@@ -555,7 +408,7 @@ MINDS_algorithm <- function(
     a_1.all <- cbind(a_1.all, a_1)
     alpha.all <- abind::abind(alpha.all, alpha, along = 3)
     llk.all <- cbind(llk.all, llk)
-    sigma2_b.all <- rbind(sigma2_b.all, sigma2_b)
+    sigma2_b.all <- cbind(sigma2_b.all, sigma2_b)
   }
 
   iter.all <- dim(x.all)[3]
@@ -563,6 +416,9 @@ MINDS_algorithm <- function(
   post.idx <- seq.int(n.burn + 1, iter.all)
 
   x.est <- apply(x.all[, , post.idx, drop = FALSE], c(1, 2), median)
+  b.est <- apply(b.all[, , post.idx, drop = FALSE], c(1, 2), median)
+  sigma2_y_2.est <- apply(sigma2_y_2.all[, post.idx, drop = FALSE], 1, median)
+  sigma2_b.est <- apply(sigma2_b.all[, post.idx, drop = FALSE], 1, median)
   a_2.est <- apply(a_2.all[, post.idx, drop = FALSE], 1, median)
   a_1.est <- apply(a_1.all[, post.idx, drop = FALSE], 1, median)
   V.est <- apply(V.all[, , post.idx, drop = FALSE], c(1, 2), median)
@@ -571,26 +427,225 @@ MINDS_algorithm <- function(
   alpha.est <- apply(Z.all[, , post.idx, drop = FALSE], c(1, 2), median)
   theta.est <- round(apply(theta.all[post.idx, , drop = FALSE], 2, median), 3)
   Z.cat.est <- apply(alpha.est, 2, which.max)
-  
-  if (apply_identifiability) {
-    iden.par <- enforce_identifiability(
-      x.est = x.est,
-      V.est = V.est,
-      U.est = U.est,
-      a_1.est = a_1.est,
-      a_2.est = a_2.est,
-      theta.est = theta.est,
-      Nd1 = Nd1,
-      Nd2 = Nd2,
-      Nt = Nt
-    )
 
-    x.est <- iden.par$x.est
-    V.est <- iden.par$V.est
-    U.est <- iden.par$U.est
-    a_1.est <- iden.par$a_1.est
-    a_2.est <- iden.par$a_2.est
+
+if (!is.null(true.values)) {
+  error.result <- error.fun(
+    Z.cat.est = Z.cat.est,
+    Nc = Nc,
+    Nb = Nb,
+    Z.true = Z.true,
+    theta.true = theta.true,
+    cindex_fun = cindex
+  )
+  
+  Z.est <- (error.result$Z.est.reorder)
+  x.est <- x.est[error.result$ind.reorder, , drop = FALSE]
+  theta.est <- as.numeric(theta.est)[error.result$ind.reorder]}
+
+if (!is.null(true.values)) {
+#solving equation to estimate x, U, V, a----
+#integrate U and V, solve equation system based on X*V and X*U, constraints on x11=x.true[1,1]
+
+ind.x <- Nc*Nt
+ind.V <- Nt*Nd1
+ind.U <- Nt*Nd2
+ind.a1<- Nd1
+ind.a2 <- Nd2
+
+
+eval_f <- function(par){
+
+  par.all <- c(x.true[1, 1], par, a_2.true[Nd2])
+  x.tran <- matrix(c(par.all[1:ind.x]), Nc, Nt, byrow = F)
+  V.tran <- matrix(par.all[(ind.x + 1): (ind.x + ind.V)], Nt, Nd1, byrow = F)
+  U.tran <- matrix(par.all[(ind.x + ind.V +1): (ind.x + ind.V + ind.U)],
+                   Nt, Nd2, byrow = F)
+  a_1.tran <- par.all[(ind.x + ind.V + ind.U +1):(ind.x + ind.V + ind.U+Nd1)]
+  
+  a_2.tran <- par.all[(ind.x + ind.V + ind.U+Nd1 +1): (ind.x + ind.V + ind.U+Nd1+Nd2)]
+  
+  temp1 <- t(apply(x.tran %*% V.tran, 1, function (t) {t + a_1.tran}));#XV+a_1
+  temp2 <- t(apply(x.tran %*% U.tran, 1, function (t) {t + a_2.tran}));#XU+a_2
+  
+  temp3.est <- t(apply(x.est %*% V.est, 1,
+                       function (t) {t + a_1.est}));#XV-a_1
+  
+  temp4.est <- t(apply(x.est %*% U.est, 1,
+                       function (t) {t + a_2.est}));#XU-a_2
+  
+  
+  temp3.true <- t(apply(x.true %*% V.true, 1,
+                        function (t) {t + a_1.true}));#XV-a_1
+  
+  temp4.true <- t(apply(x.true %*% U.true, 1,
+                        function (t) {t + a_2.true}));#XU-a_2
+
+  temp <- sum((temp1 -temp3.est )^2) + sum((temp2 - temp4.est)^2)
+  
+  return(temp)
+}
+
+# inequalities
+eval_ineq <- function(par) {
+  
+  h <-  par[(ind.x ): (ind.x + ind.V + ind.U)] #x.true[1,1] is not included, constraint V and U are positive
+  # h <- x.true[1,1]
+  return(h)
+}
+
+
+  # par.all.true <- c(c(x.true), c(V.true), c(U.true), a_1.true, a_2.true)
+  # par.true <- par.all.true[-c(1, length(par.all.true))] #remove x11, a_2[Nd2]
+  # par.ini <- par.true + rnorm(length(par.true), 0, 0.1)
+  
+  ini.par    <- par.fun(seed.no = 34592, Nd1, Nd2, Nt, Nc)
+  par.all.ini <- c(c(ini.par$x), c(ini.par$V), c(ini.par$U),
+                   ini.par$a_1, ini.par$a_2)
+  
+  par.ini <- par.all.ini[-c(1, length(par.all.ini))]
+  par <- cobyla(par.ini, eval_f, 
+              hin = eval_ineq,
+              control = list(xtol_rel = 1e-20, maxeval = 100000))$par
+
+par.all <- c(x.true[1,1], par, a_2.true[Nd2])# not estimate x[1,1], a_2[Nd2]
+x.tran <- matrix(c(par.all[1:ind.x]), Nc, Nt, byrow = F)
+V.tran <- matrix(par.all[(ind.x + 1): (ind.x + ind.V)], Nt, Nd1, byrow = F)
+U.tran <- matrix(par.all[(ind.x + ind.V +1): (ind.x + ind.V + ind.U)],
+                 Nt, Nd2, byrow = F)
+
+a_1.tran <- par.all[(ind.x + ind.V + ind.U+1):(ind.x + ind.V + ind.U+Nd1)]
+
+a_2.tran <- par.all[(ind.x + ind.V + ind.U+Nd1 +1): (ind.x + ind.V + ind.U+Nd1+Nd2)]
+
+
+#iteration update b_i and Z ----
+Z.all <- NULL
+sigma2_b.all <- NULL
+sigma2_y_2.all <- NULL
+theta.all <- NULL
+ii.iter <- 0
+iter.max2 <- iter.max
+
+x <- x.tran
+V <- V.tran
+U <- U.tran
+a_1 <- a_1.tran
+a_2 <- a_2.tran
+Z <- Z.est
+theta <- theta.est
+
+
+while (ii.iter < iter.max2) {
+  ##b_ti ----
+  for (ti in 1:Nt) {
+    
+    b.sub <- b
+    b.sub[,ti] <- 0
+    
+    #binary part
+    temp <- (t(Z) %*% x + b.sub) %*% V
+    temp1 <- t(apply(temp, 1, function (t) {t-a_1}))# (Z^T*x+b)V-a
+    C_ti <- (y_1-1/2)/w - temp1
+    
+    #continuous part
+    temp <- (t(Z) %*% x + b.sub) %*% U
+    temp1 <- t(apply(temp, 1, function (t) {t-a_2}))# (Z^T*x+b)V-a
+    D_ti <- y_2 - temp1
+    
+    
+    V_b_ti_diag <- 1/(apply(w*M_1,1, function(w_i) {sum(w_i * V[ti,]^2)}) +
+                        apply(M_2,1, function(M2_i) {sum(M2_i * 1/sigma2_y_2*U[ti,]^2)}) +
+                        1/sigma2_b[ti]) #diagonal elements of cov(b)
+
+    
+    Mu_b_ti <- (apply(w*M_1*C_ti, 1, function(t) {sum(t * V[ti,], na.rm = T)}) +
+                  apply(D_ti*M_2, 1, function(t) 
+                  {sum(t * U[ti,] * 1/sigma2_y_2, na.rm = T)}))* (V_b_ti_diag)
+    
+    b_ti <- sapply(seq(Nb), function(bi) rnorm(1, Mu_b_ti[bi], sqrt(V_b_ti_diag[bi])))
+    b[,ti] <- b_ti
   }
+  
+  ##Z_i----
+  alpha <- NULL
+  for (k in 1:Nc){
+    
+    # binary items
+    temp1 <- t(apply(b, 1, function(b_i) {x[k, ] + b_i}) ) %*% V
+    temp2 <- t(apply(temp1, 1, function (t) {t-a_1})) - (y_1-1/2)/w
+    temp2 <- ifelse(is.na(temp2), 0, temp2)
+    p1_k <- exp(-w*M_1/2 * temp2^2)
+    
+    # continuous items
+    temp1 <- t(apply(b, 1, function(b_i) {x[k, ] + b_i}) ) %*% U
+    temp2 <- t(apply(temp1, 1, function (t) {t-a_2}))
+    
+    sigma2_y_2_matrix <- matrix(rep(sigma2_y_2, Nb), nrow = Nb, byrow = T)
+    
+    aa <- temp2 - y_2
+    aa <- ifelse(is.na(aa), 0, aa)
+    p2_k <- (1/sqrt(2*pi*sigma2_y_2_matrix))^M_2* exp(-(aa)^2/2/sigma2_y_2_matrix)
+    
+    # integrated
+    alpha.k <- apply(p1_k, 1, prod) *apply(p2_k, 1, prod)* theta[k]
+    alpha <- cbind(alpha, alpha.k)
+    
+    
+    
+  }
+  
+  alpha <- alpha/apply(alpha, 1, sum); #alpha #standardize
+  Z <- apply(alpha, 1, function(p) rmultinom(1, 1, p))
+  
+  ##sigma2_b----
+  #obtain conditional posterior for sigma2_b
+  sigma2_b <-apply(b, 2, function(b_ti) {rinvgamma(1, Nb/2 + IG_b.shape, sum(b_ti^2)/2+IG_b.scale)})
+  
+  ##sigma2_y_2----
+  #obtain conditional posterior for sigma2_y_2
+  temp <- (t(Z) %*% x + b) %*% U; #(Z^T*x+b)*U, Nb*Nd2
+  temp1 <- t(apply(temp, 1, function (t) {t - a_2}));#(Z^T*x+b)U-a
+  
+  C <- y_2 - temp1
+  aa <- apply(C^2*M_2, 2, function(a) sum(a, na.rm = T))/2
+  
+  sigma2_y_2 <- unlist(lapply(seq(Nd2), function(j) {
+    rinvgamma(1, Nb/2 + IG_y_2.shape, aa[j] + IG_y_2.scale)}))
+  
+  ##theta----
+  #obtain conditional posterior for theta
+  theta <- rdirichlet(1, apply(Z, 1, sum) + p.theta.prior)
+  
+  theta.all <- rbind(theta.all, theta)
+  sigma2_y_2.all <- cbind(sigma2_y_2.all, sigma2_y_2)
+  Z.all <- abind(Z.all, Z, along = 3)
+  sigma2_b.all <- rbind(sigma2_b.all, sigma2_b)
+  
+  
+  ii.iter <- ii.iter +1
+
+  
+}
+
+#summerize----
+iter.all <- dim(Z.all)[3]
+n.burn <- round(iter.all*0.8, 0)
+
+alpha.est <- apply(Z.all[ , , n.burn:iter.all], c(1,2), median); #alpha.est
+
+Z.cat.est <- apply(alpha.est, 2, which.max)
+
+Z.est <- Zcat_to_Zest(Z.cat.est, Nc, Nb)
+
+sigma2_b.est <- apply(sigma2_b.all[-(1:n.burn), ], 2, median)
+
+sigma2_y_2.est <- apply(sigma2_y_2.all[, -(1:n.burn)], 1, median)
+theta.est <- round(apply(theta.all[(n.burn+1):iter.all, ], 2, median), 3)
+}
+
+
+
 
   llk.trace <- as.numeric(llk.all[1, ])
   if (plot_trace) {
@@ -598,46 +653,14 @@ MINDS_algorithm <- function(
   }
   llk.plot <- llk.trace
 
-  par.est <- list(
-    "Z" = Z,
-    "x" = x.est,
-    "b" = b,
-    "V" = V.est,
-    "U" = U.est,
-    "a_1" = a_1.est,
-    "a_2" = a_2.est,
-    "sigma2_y_2" = sigma2_y_2,
-    "sigma2_b" = sigma2_b
-  )
-
-  if (exists("dic.fun", mode = "function", inherits = TRUE) &&
-      exists("llk.fun", mode = "function", inherits = TRUE) &&
-      exists("par.simu.fun", mode = "function", inherits = TRUE)) {
-    dic_fun_ns <- get("dic.fun", mode = "function", inherits = TRUE)
-    llk_fun_ns <- get("llk.fun", mode = "function", inherits = TRUE)
-    par_simu_fun_ns <- get("par.simu.fun", mode = "function", inherits = TRUE)
-
-    # cal_DIC helpers rely on free variables, so evaluate in a local mutable env.
-    dic_env <- new.env(parent = environment(dic_fun_ns))
-    dic_env$llk.fun <- llk_fun_ns
-    dic_env$par.simu.fun <- par_simu_fun_ns
-    dic_env$dic.fun <- dic_fun_ns
-    environment(dic_env$llk.fun) <- dic_env
-    environment(dic_env$par.simu.fun) <- dic_env
-    environment(dic_env$dic.fun) <- dic_env
-  } else {
-    dic_path_candidates <- c("MINDS_Rpackage/cal_DIC_v7.R", "cal_DIC_v7.R")
-    dic_path_exists <- file.exists(dic_path_candidates)
-    if (!any(dic_path_exists)) {
-      stop("Could not find cal_DIC_v7.R. Expected in MINDS_Rpackage/ or current working directory.")
-    }
-    dic_path <- dic_path_candidates[which(dic_path_exists)[1]]
-    dic_env <- new.env(parent = environment())
-    sys.source(dic_path, envir = dic_env)
-    if (!exists("dic.fun", envir = dic_env, mode = "function", inherits = FALSE)) {
-      stop("dic.fun is not defined in cal_DIC_v7.R")
-    }
-  }
+  # cal_DIC helpers rely on free variables; rebind them into a local mutable env.
+  dic_env <- new.env(parent = environment(dic.fun))
+  dic_env$llk.fun <- llk.fun
+  dic_env$par.simu.fun <- par.simu.fun
+  dic_env$dic.fun <- dic.fun
+  environment(dic_env$llk.fun) <- dic_env
+  environment(dic_env$par.simu.fun) <- dic_env
+  environment(dic_env$dic.fun) <- dic_env
 
   # cal_DIC_v7.R references these symbols without namespaces.
   assign("rpg", BayesLogit::rpg, envir = dic_env)
@@ -672,20 +695,32 @@ MINDS_algorithm <- function(
   assign("IG_y_2.scale", IG_y_2.scale, envir = dic_env)
   assign("n.rep", n.rep, envir = dic_env)
 
-  ic.out <- dic_env$dic.fun(par.est)
+  ic.out <- dic_env$dic.fun(list(
+    "Z" = Z.est,
+    "x" = x.est,
+    "b" = b,
+    "V" = V.est,
+    "U" = U.est,
+    "a_1" = a_1.est,
+    "a_2" = a_2.est,
+    "sigma2_y_2" = sigma2_y_2.est,
+    "sigma2_b" = sigma2_b.est
+  ))
   if (!is.list(ic.out) || is.null(ic.out$ic)) {
-    stop("dic.fun(par.est) must return a list containing element 'ic'.")
+    stop("dic.fun() must return a list containing element 'ic'.")
   }
   ic.value <- ic.out$ic
   return(list(
     "membership" = Z.cat.est,
     "cluster center" = x.est,
-    "x trace" = x.all,
     "loading to binary modality" = V.est,
     "loading to continuous modality" = U.est,
     "binary modality intercept" = a_1.est,
     "continuous modality intercept" = a_2.est,
     "membership weight" = theta.est,
+    "b" = b.est,
+    "sigma2_y_2" = sigma2_y_2.est,
+    "sigma2_b" = sigma2_b.est,
     "likelihood trace plot" = llk.plot,
     "ic" = ic.value
   ))

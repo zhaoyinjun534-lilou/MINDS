@@ -58,7 +58,7 @@ par.simu.fun <- function(par.est){
   
   temp1 <- (t(Z) %*% x + b) %*% V; #(Z^T*x+b)*V
   temp <- t(apply(temp1, 1, function (t) {t-a_1}));#(Z^T*x+b)*V-a_1
-  w <- apply(temp, c(1,2), function(s) (rpg(num=1, h=1, z=s))) #random sample from polya-gamma distribution
+  w <- apply(temp, c(1,2), function(s) (BayesLogit::rpg(num=1, h=1, z=s))) #random sample from polya-gamma distribution
   colnames(w) <- NULL
   
   ####obtain conditional posterior for a
