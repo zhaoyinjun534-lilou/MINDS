@@ -1,6 +1,7 @@
-utils::globalVariables(c(
-  "IG_y_2.scale", "IG_y_2.shape", "M_1", "M_2", "Nb", "Nc", "Nd1", "Nd2",
-  "Nt", "Z.true", "cobyla", "mu_u", "mu_v", "mu_x", "n.rep", "p.theta.prior", 
-  "sigma2_a_1", "sigma2_a_2", "sigma2_b", "sigma2_u", "sigma2_v", "sigma2_x", 
-  "theta", "theta.true", "y_1", "y_2"
+# The DIC helpers in cal_DIC_v7.R read the data and its dimensions as free
+# variables; MINDS_algorithm() supplies them by rebinding the helpers into a
+# local `dic_env` holding this call's data. Declare them here so R CMD check
+# does not flag them as undefined globals.
+globalVariables(c(
+  "M_1", "M_2", "Nb", "Nc", "Nd1", "Nd2", "y_1", "y_2"
 ))

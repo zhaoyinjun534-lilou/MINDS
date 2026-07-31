@@ -1,25 +1,30 @@
 Package: MINDS
 Type: Package
-Title: Mixed-Modal Integrative Clustering With Bayesian MINDS
-Version: 0.0.1
+Title: Mixed-Modal Integrative Clustering with Bayesian MINDS
+Version: 0.0.2
 Authors@R: person("Yinjun", "Zhao", email = "yz3503@cumc.columbia.edu", role = c("aut", "cre"))
 Author: Yinjun Zhao [aut, cre]
 Maintainer: Yinjun Zhao <yz3503@cumc.columbia.edu>
 Description: Provides the MINDS algorithm for integrative clustering of
     mixed binary and continuous outcomes, plus an example simulated dataset.
+    Posterior draws are mapped to an identified (canonical) form, and the
+    number of clusters and latent constructs is selected with the complete-data
+    deviance information criteria of Celeux et al. (2006)
+    <doi:10.1214/06-BA122>.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Depends: R (>= 4.1.0)
 Imports:
     BayesLogit,
     EDISON,
-    iClusterPlus,
     LaplacesDemon,
     MASS,
     abind,
+    graphics,
+    kamila,
     mice,
-    nloptr,
-    psych
+    stats,
+    utils
